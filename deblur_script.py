@@ -127,7 +127,7 @@ def deblur_fp_06(cam01,cam02,psf1,psf2,scale=1):#Arrumar os parametros daqui
   Rw = (Rw-np.min(Rw))/(np.max(Rw)-np.min(Rw))
   Rw = 1-Rw
 
-  Rsparse = (t-np.min(Rsparse))/(np.max(Rsparse)-np.min(Rsparse))
+  Rsparse = (Rsparse-np.min(Rsparse))/(np.max(Rsparse)-np.min(Rsparse))
   Rsparse = 1-Rsparse
   
   return Rw,Rsparse
