@@ -4,6 +4,7 @@ from os.path import isfile,join,exists
 
 import cv2 as cv
 import numpy as np
+import time
 from numpy.fft import fft2
 from numpy.fft import ifft2
 from scipy.fftpack import fftn, ifftn
@@ -36,7 +37,10 @@ def deblur(input_path, output_path, categoryNbr):
       im2=Image.open(join(ip2,img_path))
 
       scale=1
+      start=time.time()
       Rw,Rsparse=deblur_fp_06(im1,im2,psf1,psf2,scale)
+      end=time.time()
+      print("Elapsed time: "+time.strftime("%H:%M:%S",time.gmtime(end-start)))
       Rw_image=Image.fromarray(Rw)
       Rsparse_image=Image.fromarray(Rsparse)
 
