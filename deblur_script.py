@@ -10,12 +10,21 @@ from numpy.fft import ifft2
 from scipy.fftpack import fftn, ifftn
 from scipy import ndimage
 from skimage.restoration import (denoise_tv_chambolle,denoise_wavelet,denoise_bilateral)
-
+from skimage import exposure
 
 from PIL import Image
 from skimage.color import rgb2yuv, yuv2rgb
 
-
+def hist_norm(img):
+    #img=np.asarray(img)
+    #img_eq = exposure.equalize_hist(img)
+    p2, p98 = np.percentile(img, (4, 96))
+    img_eq = exposure.rescale_intensity(img, in_range=(p2, p98))
+    img_eq[img_eq<0] = 0
+    img_eq[img_eq>1] = 1
+    img_eq= 1-img_eq
+    img_eq=(img_eq*255).astype(np.uint8)
+    return Image.fromarray(img_eq,mode="L")
 
 def deblur(input_path, output_path, categoryNbr):
   exclude=["LSF","PSF"]
@@ -24,6 +33,9 @@ def deblur(input_path, output_path, categoryNbr):
 
   op1=join(output_path,"RW")
   op2=join(output_path,"RS")
+  op3=join(output_path,"RSL1")
+  op4=join(output_path,"RA")
+  op5=join(output_path,"RC")
 
   img_files=[f for f in listdir(ip1) if (isfile(join(ip1,f)) and f.endswith(".tif"))]
   for img_path in img_files:
@@ -38,20 +50,42 @@ def deblur(input_path, output_path, categoryNbr):
 
       scale=1
       start=time.time()
-      Rw,Rsparse=deblur_fp_06(im1,im2,psf1,psf2,scale)
+      Rw,Rsparse,RL1Sparse,Ranti,Rcomb=deblur_fp_06(im1,im2,psf1,psf2,scale)
       end=time.time()
       print("Elapsed time: "+time.strftime("%H:%M:%S",time.gmtime(end-start)))
-      Rw_image=Image.fromarray(Rw)
-      Rsparse_image=Image.fromarray(Rsparse)
 
+      '''
+      Rw=(Rw*255).astype(np.uint8)
+      Rsparse=(Rsparse*255).astype(np.uint8)
+      RL1Sparse=(RL1Sparse*255).astype(np.uint8)
+      Ranti=(Ranti*255).astype(np.uint8)
+      Rcomb=(Rcomb*255).astype(np.uint8)
+
+      Rw_image=Image.fromarray(Rw,mode="L")
+      Rsparse_image=Image.fromarray(Rsparse,mode="L")
+      RL1Sparse_image=Image.fromarray(RL1Sparse,mode="L")
+      Ranti_image=Image.fromarray(Ranti,mode="L")
+      Rcomb_image=Image.fromarray(Rcomb,mode="L")
+      '''
 
       if not exists(op1):
         makedirs(op1)
       if not exists(op2):
         makedirs(op2)
+      if not exists(op3):
+        makedirs(op3)
+      if not exists(op4):
+        makedirs(op4)
+      if not exists(op5):
+        makedirs(op5)
 
-      Rw_image.save(join(op1,img_path))
-      Rsparse_image.save(join(op2,img_path))
+      img_path=img_path.replace('tif','png')
+
+      Rw.save(join(op1,img_path))
+      Rsparse.save(join(op2,img_path))
+      RL1Sparse.save(join(op3,img_path))
+      Ranti.save(join(op4,img_path))
+      Rcomb.save(join(op5,img_path))
 
 
   return
@@ -116,25 +150,48 @@ def deblur_fp_06(cam01,cam02,psf1,psf2,scale=1):#Arrumar os parametros daqui
 
   fftR = fft2(tpsf)
   fftX = fft2(Xpsf)
-  OTF0 = ((np.conjugate(fftR)*fftX)/(fftR*np.conjugate(fftR)))
+  OTF0 = ((np.conjugate(fftR)*fftX)/(fftR*np.conjugate(fftR)+5))
 
-  Niter     = 100
-  lamb      = 0.01
-  lambdaPSF = 5
+  #Niter     = 100
+  #lamb      = 0.01
+  #lambdaPSF = 5
   
+  Niter     = 50
+  lamb      = 0.2
+  lambdaPSF = 5
+
+  #Wavelet denoiser
   f=denoise_wavelet
   Rw,OTFEw=blind_decon2D_red_fp_wavelet(R0,X,OTF0,Niter,lamb,lambdaPSF,f,t)
 
+  #Wavelet denoiser + sparse denoise
   f=denoise_wavelet
   Rsparse,OTFEsparse=blind_decon2D_red_fp_wavelet_sparse(R0,X,OTF0,Niter,lamb,lambdaPSF,f,t)
 
-  Rw = (Rw-np.min(Rw))/(np.max(Rw)-np.min(Rw))
-  Rw = 1-Rw
+  # Sparse denoise (L1 soft threshold)
+  Niter     = 50
+  lamb      = 0.2
+  lambdaPSF = 10
+  f         = denoise_L1
+  radius    = 0.15
+  RL1sparse,OTFEsparse = blind_decon2D_red_fp_L1(R0,X,OTF0,Niter,lamb,lambdaPSF,f,radius,t)
 
-  Rsparse = (Rsparse-np.min(Rsparse))/(np.max(Rsparse)-np.min(Rsparse))
-  Rsparse = 1-Rsparse
+  # Anti sparse denoise (L1 projection)
+  f      = denoise_L1projection
+  alpha  = 1
+  radius = alpha*np.max(R0)
+  Ranti, OTFEanti = blind_decon2D_red_fp_L1(R0,X,OTF0,Niter,lamb,lambdaPSF,f,radius,t)
+
+  sigma = 0.5
+  Rcomb = sigma*RL1sparse + (1-sigma)*Ranti
+
+  Rw = hist_norm(Rw)
+  Rsparse = hist_norm(Rsparse)
+  RL1sparse = hist_norm(RL1sparse)
+  Ranti = hist_norm(Ranti)
+  Rcomb = hist_norm(Rcomb)
   
-  return Rw,Rsparse
+  return Rw,Rsparse,RL1sparse,Ranti,Rcomb
 
 def ptrans(f):
   t=f.shape[0]//2+1,f.shape[1]//2+1
@@ -213,6 +270,77 @@ def otf2psf(otf, psf_size):
         psf = np.zeros(psf_size)
     return psf
 
+def denoise_L1(I,R):
+    I = (I/(np.abs(I)+1e-10)) * np.maximum(np.abs(I) - R, 0)
+    return I
+
+def denoise_L1projection(I, R):
+  #I: Image to be projected onto the L1 Ball
+  #R: Ball Radius 
+
+  [N1, N2] = I.shape
+  I_ = I.ravel()
+  sign_array = np.sign(I_)
+
+  #Determining lbda
+  idx = np.argwhere((I_- R) > 0)
+  K = 0
+  sum = 0
+  for id in idx:
+    K += 1
+    sum += I_[id] - R
+  if(K > 0):
+    lbda = sum/K
+  else:
+    lbda = 0
+
+  #Projection
+  I_[idx] = I_[idx] - lbda
+  I_ = np.multiply(I_, sign_array)
+  I = np.reshape(I_, (N1, N2))
+
+  return I
+
+def blind_decon2D_red_fp_L1(R0,X,OTF,Niter,lamb,lambdaPSF,f,radius,R_true):
+  R=R0.copy()
+  OTF0 = OTF.copy()
+  scale_percent = 100
+  width = int(OTF0.shape[1] * scale_percent / 100)
+  height = int(OTF0.shape[0] * scale_percent / 100)
+  dim = (height, width)
+  PSF  = otf2psf(OTF0, dim)
+  OTF  = psf2otf(PSF, OTF0.shape)
+
+  fftX=fft2(X)
+  fftR=fft2(R)
+  fftHtH=np.conjugate(OTF)*OTF
+  fftHtX=np.conjugate(OTF)*fftX 
+
+  for ii in range(Niter):
+    # denoise R - L1
+
+    RD=f(R, radius)
+
+    b=fftHtX+lamb*(fft2(RD))
+    A=fftHtH+lamb
+    fftR=np.nan_to_num(b/A)
+    R=np.real(ifft2(fftR))
+
+    # update OTF
+    #OTF0 = ((np.conjugate(fftR)*fftX)/(fftR*np.conjugate(fftR)+lambdaPSF))
+    # if not (ii+1)%10:
+    #   print("Update OTF")
+    #   OTF0 = ((np.conjugate(fftR)*fftX)/(fftR*np.conjugate(fftR)+lambdaPSF))
+    #   PSF = otf2psf(OTF0, dim)
+    #   OTF = psf2otf(PSF, OTF0.shape)
+    #   fftHtH=np.conjugate(OTF)*OTF
+    #   fftHtX=np.conjugate(OTF)*fftX 
+
+    psnr=PSNR(R_true,R)
+    print('iter: ',ii,'\t PSNR=',psnr)
+    
+  return R,OTF
+
 def blind_decon2D_red_fp_wavelet(R0,X,OTF,Niter,lamb,lambdaPSF,f,R_true):
   R=R0.copy()
   OTF0 = OTF.copy()
@@ -239,12 +367,11 @@ def blind_decon2D_red_fp_wavelet(R0,X,OTF,Niter,lamb,lambdaPSF,f,R_true):
     R=np.real(ifft2(fftR))
 
     # update OTF
-    OTF0 = ((np.conjugate(fftR)*fftX)/(fftR*np.conjugate(fftR)+lambdaPSF))
-    PSF = otf2psf(OTF0, dim)
-    OTF = psf2otf(PSF, OTF0.shape)
-
-    fftHtH=np.conjugate(OTF)*OTF
-    fftHtX=np.conjugate(OTF)*fftX 
+    #OTF0 = ((np.conjugate(fftR)*fftX)/(fftR*np.conjugate(fftR)+lambdaPSF))
+    #PSF = otf2psf(OTF0, dim)
+    #OTF = psf2otf(PSF, OTF0.shape)
+    #fftHtH=np.conjugate(OTF)*OTF
+    #fftHtX=np.conjugate(OTF)*fftX 
 
     psnr=PSNR(R_true,R)
     print('iter: ',ii,'\t PSNR=',psnr)
@@ -269,14 +396,17 @@ def blind_decon2D_red_fp_wavelet_sparse(R0,X,OTF,Niter,lamb,lambdaPSF,f,R_true):
   for ii in range(Niter):
     # denoise R
 
-    RD=f(R)
+    RD    = f(R)
+    RD    = RD.copy()
+    value = 0.15
+    RD    = RD/np.abs(RD) * np.maximum(np.abs(RD) - value, 0)
 
-    RD = RD - np.mean(RD)
-    RD[RD<0] = 0
-    RD[RD>1] = 1
-    RD=RD/np.max(RD)
+    # RD = RD - np.mean(RD)
+    # RD[RD<0] = 0
+    # RD[RD>1] = 1
+    # RD=RD/np.max(RD)
 
-    RD=ndimage.uniform_filter(RD,3)
+    # RD=ndimage.uniform_filter(RD,3)
 
     b=fftHtX+lamb*(fft2(RD))
     A=fftHtH+lamb
@@ -284,12 +414,11 @@ def blind_decon2D_red_fp_wavelet_sparse(R0,X,OTF,Niter,lamb,lambdaPSF,f,R_true):
     R=np.real(ifft2(fftR))
 
     # update OTF
-    OTF0 = ((np.conjugate(fftR)*fftX)/(fftR*np.conjugate(fftR)+lambdaPSF))
-    PSF = otf2psf(OTF0, dim)
-    OTF = psf2otf(PSF, OTF0.shape)
-
-    fftHtH=np.conjugate(OTF)*OTF
-    fftHtX=np.conjugate(OTF)*fftX 
+    #OTF0 = ((np.conjugate(fftR)*fftX)/(fftR*np.conjugate(fftR)+lambdaPSF))
+    #PSF = otf2psf(OTF0, dim)
+    #OTF = psf2otf(PSF, OTF0.shape)
+    #fftHtH=np.conjugate(OTF)*OTF
+    #fftHtX=np.conjugate(OTF)*fftX 
 
     psnr=PSNR(R_true,R)
     print('iter: ',ii,'\t PSNR=',psnr)
@@ -310,3 +439,4 @@ def YUV(endereco):
 
 def RGB(endereco):
     return yuv2rgb(endereco)
+ 

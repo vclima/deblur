@@ -11,7 +11,7 @@ def normalize(img):
     """
     arr = np.array(img, dtype=float)
 
-    arr = (arr - arr.min()) * (255 / arr[:, :50].min())
+    arr = (arr - arr.min()) * (255 / (arr[:, :50].min()+1e-10))
     arr[arr > 255] = 255
     arr[arr < 0] = 0
 
@@ -74,15 +74,18 @@ def evaluateImage(imageFile, trueTextFile, verbose=False):
 
     if len(OCRtext) != 3:
         if(verbose):
+            print('File:' + imageFile)
             print('ERROR: OCR text does not have 3 lines of text!')
             print(OCRtext)
+            print('\n')
         return None
     else:
         score = fuzz.ratio(trueText[1], OCRtext[1])
         #print('OCR  text (middle line): %s' % OCRtext[1])
         if(verbose):
             print('File:' + imageFile)
-            print(OCRtext[1]+' Score: %d' % score)
+            print(OCRtext[0]+' '+OCRtext[1]+' '+OCRtext[2])
+            print('Score: %d \n' % score)
 
         return float(score)
 
