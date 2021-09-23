@@ -1,3 +1,5 @@
+
+import queue
 from PIL import Image
 from os import listdir,makedirs
 from os.path import isfile,join,exists
@@ -5,6 +7,7 @@ from os.path import isfile,join,exists
 import cv2 as cv
 import numpy as np
 import time
+import multiprocessing as mp
 from numpy.fft import fft2
 from numpy.fft import ifft2
 from scipy.fftpack import fftn, ifftn
@@ -16,8 +19,6 @@ from PIL import Image
 from skimage.color import rgb2yuv, yuv2rgb
 
 def hist_norm(img):
-    #img=np.asarray(img)
-    #img_eq = exposure.equalize_hist(img)
     p2, p98 = np.percentile(img, (4, 96))
     img_eq = exposure.rescale_intensity(img, in_range=(p2, p98))
     img_eq[img_eq<0] = 0
@@ -161,26 +162,59 @@ def deblur_fp_06(cam01,cam02,psf1,psf2,scale=1):#Arrumar os parametros daqui
   lambdaPSF = 5
 
   #Wavelet denoiser
-  f=denoise_wavelet
-  Rw,OTFEw=blind_decon2D_red_fp_wavelet(R0,X,OTF0,Niter,lamb,lambdaPSF,f,t)
+  f1=denoise_wavelet
+  #Rw,OTFEw=blind_decon2D_red_fp_wavelet(R0,X,OTF0,Niter,lamb,lambdaPSF,f,t)
 
   #Wavelet denoiser + sparse denoise
-  f=denoise_wavelet
-  Rsparse,OTFEsparse=blind_decon2D_red_fp_wavelet_sparse(R0,X,OTF0,Niter,lamb,lambdaPSF,f,t)
+  #f=denoise_wavelet
+  #Rsparse,OTFEsparse=blind_decon2D_red_fp_wavelet_sparse(R0,X,OTF0,Niter,lamb,lambdaPSF,f,t)
 
   # Sparse denoise (L1 soft threshold)
-  Niter     = 50
-  lamb      = 0.2
-  lambdaPSF = 10
-  f         = denoise_L1
-  radius    = 0.15
-  RL1sparse,OTFEsparse = blind_decon2D_red_fp_L1(R0,X,OTF0,Niter,lamb,lambdaPSF,f,radius,t)
-
+  f3         = denoise_L1
+  radius3    = 0.15
+  #RL1sparse,OTFEsparse = blind_decon2D_red_fp_L1(R0,X,OTF0,Niter,lamb,lambdaPSF,f,radius,t)
+ 
   # Anti sparse denoise (L1 projection)
-  f      = denoise_L1projection
+  f4      = denoise_L1projection
   alpha  = 1
-  radius = alpha*np.max(R0)
-  Ranti, OTFEanti = blind_decon2D_red_fp_L1(R0,X,OTF0,Niter,lamb,lambdaPSF,f,radius,t)
+  radius4 = alpha*np.max(R0)
+  #Ranti, OTFEanti = blind_decon2D_red_fp_L1(R0,X,OTF0,Niter,lamb,lambdaPSF,f,radius,t)
+
+  qout=mp.Queue()
+  jobs=(blind_decon2D_red_fp_wavelet,blind_decon2D_red_fp_wavelet_sparse,blind_decon2D_red_fp_L1,blind_decon2D_red_fp_L1)
+  args=((R0,X,OTF0,Niter,lamb,lambdaPSF,f1,t,qout),(R0,X,OTF0,Niter,lamb,lambdaPSF,f1,t,qout),(R0,X,OTF0,Niter,lamb,lambdaPSF,f3,radius3,t,qout,3),(R0,X,OTF0,Niter,lamb,lambdaPSF,f4,radius4,t,qout,4))
+
+  processes = [mp.Process(target=job, args=arg)
+             for job, arg in zip(jobs, args)]
+  
+ 
+  for p in processes:
+    p.start()
+
+  unsorted=[]
+  while True:
+    try:
+        op = qout.get(False)
+        unsorted.append(op)
+    except queue.Empty:
+        pass
+    allExited = True
+    for t in processes:
+        if t.exitcode is None:
+            allExited = False
+            break
+    if allExited & qout.empty():
+        break
+
+  for p in processes:
+    p.join()
+
+  result=[t[1] for t in sorted(unsorted)]
+
+  Rw=result[0]
+  Rsparse=result[1]
+  RL1sparse=result[2]
+  Ranti=result[3]
 
   sigma = 0.5
   Rcomb = sigma*RL1sparse + (1-sigma)*Ranti
@@ -301,7 +335,8 @@ def denoise_L1projection(I, R):
 
   return I
 
-def blind_decon2D_red_fp_L1(R0,X,OTF,Niter,lamb,lambdaPSF,f,radius,R_true):
+def blind_decon2D_red_fp_L1(R0,X,OTF,Niter,lamb,lambdaPSF,f,radius,R_true,q,sa):
+  print('L1 '+str(sa))
   R=R0.copy()
   OTF0 = OTF.copy()
   scale_percent = 100
@@ -337,11 +372,13 @@ def blind_decon2D_red_fp_L1(R0,X,OTF,Niter,lamb,lambdaPSF,f,radius,R_true):
     #   fftHtX=np.conjugate(OTF)*fftX 
 
     psnr=PSNR(R_true,R)
-    print('iter: ',ii,'\t PSNR=',psnr)
-    
-  return R,OTF
+    #print('iter: ',ii,'\t PSNR=',psnr)
+  
+  q.put((sa,R))
+  return
 
-def blind_decon2D_red_fp_wavelet(R0,X,OTF,Niter,lamb,lambdaPSF,f,R_true):
+def blind_decon2D_red_fp_wavelet(R0,X,OTF,Niter,lamb,lambdaPSF,f,R_true,q):
+  print('Wavelet')
   R=R0.copy()
   OTF0 = OTF.copy()
   scale_percent = 100
@@ -374,11 +411,12 @@ def blind_decon2D_red_fp_wavelet(R0,X,OTF,Niter,lamb,lambdaPSF,f,R_true):
     #fftHtX=np.conjugate(OTF)*fftX 
 
     psnr=PSNR(R_true,R)
-    print('iter: ',ii,'\t PSNR=',psnr)
-    
-  return R,OTF
+    #print('iter: ',ii,'\t PSNR=',psnr)
+  q.put((1,R))
+  return
 
-def blind_decon2D_red_fp_wavelet_sparse(R0,X,OTF,Niter,lamb,lambdaPSF,f,R_true):
+def blind_decon2D_red_fp_wavelet_sparse(R0,X,OTF,Niter,lamb,lambdaPSF,f,R_true,q):
+  print('Wavelet S')
   R=R0.copy()
   OTF0 = OTF.copy()
   scale_percent = 100
@@ -421,9 +459,9 @@ def blind_decon2D_red_fp_wavelet_sparse(R0,X,OTF,Niter,lamb,lambdaPSF,f,R_true):
     #fftHtX=np.conjugate(OTF)*fftX 
 
     psnr=PSNR(R_true,R)
-    print('iter: ',ii,'\t PSNR=',psnr)
-    
-  return R,OTF
+    #print('iter: ',ii,'\t PSNR=',psnr)
+  q.put((2,R)) 
+  return
 
 def convert(img, target_type_min, target_type_max, target_type):
     imin = img.min()

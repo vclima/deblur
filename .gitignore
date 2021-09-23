@@ -2,4 +2,6 @@
 /step0
 /step5
 /step5_red
+/step5_test
 /__pycache__
+out*.txt

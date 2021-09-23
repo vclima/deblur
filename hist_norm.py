@@ -6,10 +6,15 @@ from os.path import isfile,join,exists
 from PIL import Image
 
 def hist_norm(img):
-    img=np.asarray(img)
-    img_eq = exposure.equalize_hist(img)
+    img=np.asarray(img)/255
+    p2, p98 = np.percentile(img, (4, 96))
+    img_eq = exposure.rescale_intensity(img, in_range=(p2, p98))
+    img_eq[img_eq<0.3] = 0
+    img_eq[img_eq>0.3] = 1
     img_eq=(img_eq*255).astype(np.uint8)
     return Image.fromarray(img_eq,mode="L")
+    
+
 
 input_path="E:\Documentos\DECOM\Mestrado\Deblur_Challenge\output\step5_red"
 output_path="E:\Documentos\DECOM\Mestrado\Deblur_Challenge\output\step5_red_norm"
