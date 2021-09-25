@@ -21,8 +21,8 @@ from skimage.color import rgb2yuv, yuv2rgb
 def hist_norm(img):
     p2, p98 = np.percentile(img, (4, 96))
     img_eq = exposure.rescale_intensity(img, in_range=(p2, p98))
-    img_eq[img_eq<0] = 0
-    img_eq[img_eq>1] = 1
+    img_eq[img_eq<0.3] = 0
+    img_eq[img_eq>0.3] = 1
     img_eq= 1-img_eq
     img_eq=(img_eq*255).astype(np.uint8)
     return Image.fromarray(img_eq,mode="L")

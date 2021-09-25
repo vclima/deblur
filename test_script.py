@@ -8,8 +8,8 @@ from contextlib import redirect_stdout
 
 
 if __name__ == '__main__':
-    input_path="E:\Documentos\DECOM\Mestrado\Deblur_Challenge\step5_red\Verdana"
-    output_path="E:\Documentos\DECOM\Mestrado\Deblur_Challenge\output\step5_red_norm"
+    input_path="C:\Deblur_Challenge\step7\Verdana"
+    output_path="C:\Deblur_Challenge\output\step7_norm"
 
     #deblur_script.deblur(input_path,output_path,0)
 
@@ -23,7 +23,7 @@ if __name__ == '__main__':
     op4=join(output_path,"RA")
     op5=join(output_path,"RC")
 
-    with open('out_red_norm.txt', 'w') as f:
+    with open('out_7_norm.txt', 'w') as f:
         with redirect_stdout(f):
             exclude=["LSF","PSF"]
             i=0

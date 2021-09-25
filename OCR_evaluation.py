@@ -4,7 +4,9 @@ from fuzzywuzzy import fuzz
 from PIL import Image, ImageDraw, ImageOps
 from PIL import ImageFont
 
-pytesseract.pytesseract.tesseract_cmd = 'C:\Program Files\\Tesseract-OCR\\tesseract.exe'
+pytesseract.pytesseract.tesseract_cmd = 'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
+pytesseract.pytesseract= '--tessdata-dir "C:\\Program Files\\Tesseract-OCR\\tessdata"'
+
 def normalize(img):
     """
     Linear histogram normalization
