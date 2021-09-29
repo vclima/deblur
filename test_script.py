@@ -8,10 +8,10 @@ from contextlib import redirect_stdout
 
 
 if __name__ == '__main__':
-    input_path="C:\Deblur_Challenge\step7\Verdana"
-    output_path="C:\Deblur_Challenge\output\step7_norm"
+    input_path="C:\Deblur_Challenge\input\step7_red2\Verdana"
+    output_path="C:\Deblur_Challenge\output\step7_red2"
 
-    #deblur_script.deblur(input_path,output_path,0)
+    deblur_script.deblur(input_path,output_path,7)
 
     ip1=join(input_path,"CAM01")
     ip2=join(input_path,"CAM02")
@@ -23,7 +23,7 @@ if __name__ == '__main__':
     op4=join(output_path,"RA")
     op5=join(output_path,"RC")
 
-    with open('out_7_norm.txt', 'w') as f:
+    with open('out_7_red2_wav+l1.txt', 'w') as f:
         with redirect_stdout(f):
             exclude=["LSF","PSF"]
             i=0

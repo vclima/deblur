@@ -51,7 +51,7 @@ def deblur(input_path, output_path, categoryNbr):
 
       scale=1
       start=time.time()
-      Rw,Rsparse,RL1Sparse,Ranti,Rcomb=deblur_fp_06(im1,im2,psf1,psf2,scale)
+      Rw,Rsparse,RL1Sparse,Ranti,Rcomb=deblur_fp_06(im1,im2,psf1,psf2,categoryNbr,scale)
       end=time.time()
       print("Elapsed time: "+time.strftime("%H:%M:%S",time.gmtime(end-start)))
 
@@ -91,7 +91,7 @@ def deblur(input_path, output_path, categoryNbr):
 
   return
 
-def deblur_fp_06(cam01,cam02,psf1,psf2,scale=1):#Arrumar os parametros daqui
+def deblur_fp_06(cam01,cam02,psf1,psf2,categoryNbr,scale=1):#Arrumar os parametros daqui
   #im = Image.open('/content/sample_data/focusStep_5_timesR_size_30_sample_0001_cam01.tif')
   im = cam01
   t = np.asarray(im)
@@ -139,12 +139,35 @@ def deblur_fp_06(cam01,cam02,psf1,psf2,scale=1):#Arrumar os parametros daqui
   tpsf = scaled_tpsf.copy()
   Xpsf = scaled_Xpsf.copy()
 
-  sig  = 0.1
+  M,N=tpsf.shape
+  sig={'0':0.08,'1':0.0825,'2':0.085,'3':0.0875,'4':0.09,'5':0.1,'6':0.11,'7':0.12,'8':0.13,
+     '9':0.14,'10':0.15,'11':0.17,'12':0.17,'13':0.17,'14':0.17,'15':0.17,'16':0.17,
+     '17':0.17,'18':0.17,'19':0.17}
+  k={'0':(int(np.round(M*0.02)),int(np.round(N*0.006))),
+     '1':(int(np.round(M*0.02)),int(np.round(N*0.005))),
+     '2':(int(np.round(M*0.015)),int(np.round(N*0.006))),
+     '3':(int(np.round(M*0.015)),int(np.round(N*0.006))),
+     '4':(int(np.round(M*0.013)),int(np.round(N*0.005))),
+     '5':(int(np.round(M*0.013)),int(np.round(N*0.006))),
+     '6':(int(np.round(M*0.0125)),int(np.round(N*0.005))),
+     '7':(int(np.round(M*0.0105)),int(np.round(N*0.006))),
+     '8':(int(np.round(M*0.009)),int(np.round(N*0.006))),
+     '9':(int(np.round(M*0.007)),int(np.round(N*0.006))),
+     '10':(int(np.round(M*0.005)),int(np.round(-N*0.002))),
+     '11':(int(np.round(M*0.0)),int(np.round(-N*0.001))),
+     '12':(int(np.round(M*0.0)),int(np.round(-N*0.002))),
+     '13':(int(np.round(M*0.0)),int(np.round(-N*0.0025))), 
+     '14':(int(np.round(-M*0.005)),int(np.round(-N*0.003))),
+     '15':(int(np.round(-M*0.005)),int(np.round(-N*0.003))),
+     '16':(int(np.round(-M*0.015)),int(np.round(-N*0.001))),
+     '17':(int(np.round(-M*0.015)),int(np.round(-N*0.0055))),
+     '18':(int(np.round(-M*0.02)),int(np.round(-N*0.004))),
+     '19':(int(np.round(-M*0.01)),int(np.round(-N*0.004)))}
+
   x = np.linspace(-1, 1, tpsf.shape[1])
   y = np.linspace(-1, 1, tpsf.shape[0])*tpsf.shape[0]/tpsf.shape[1]
   x, y = np.meshgrid(x, y) 
-  wind = gaus2d(x, y,sx=sig,sy=sig)
-  wind = (wind-np.min(wind))/(np.max(wind)-np.min(wind))
+  wind=ptrans(gauss(tpsf.shape,sig[str(categoryNbr)]),k[str(categoryNbr)])
 
   tpsf = tpsf*wind
   Xpsf = Xpsf*wind
@@ -152,13 +175,14 @@ def deblur_fp_06(cam01,cam02,psf1,psf2,scale=1):#Arrumar os parametros daqui
   fftR = fft2(tpsf)
   fftX = fft2(Xpsf)
   OTF0 = ((np.conjugate(fftR)*fftX)/(fftR*np.conjugate(fftR)+5))
+  #OTF0=np.load('C:\Deblur_Challenge\OTF\OTF7.npy')
 
   #Niter     = 100
   #lamb      = 0.01
   #lambdaPSF = 5
   
   Niter     = 50
-  lamb      = 0.2
+  lamb      = 0.005
   lambdaPSF = 5
 
   #Wavelet denoiser
@@ -227,23 +251,25 @@ def deblur_fp_06(cam01,cam02,psf1,psf2,scale=1):#Arrumar os parametros daqui
   
   return Rw,Rsparse,RL1sparse,Ranti,Rcomb
 
-def ptrans(f):
-  t=f.shape[0]//2+1,f.shape[1]//2+1
-  rr,cc = t
-  H,W = f.shape
+def ptrans(f,to=None):
+  if to is None:
+      to=f.shape[0]//2+1,f.shape[1]//2+1
   
+  rr,cc = to
+  H,W = f.shape
+
   r=H-rr%H
   c=W-cc%W
-      
+
   h=np.zeros([2*H,2*W])
   h[0:H,0:W]=f
   h[H:2*H,0:W]=f
   h[0:H,W:2*W]=f
   h[H:2*H,W:2*W]=f
-  
+
   g=np.zeros([H,W])
   g=h[r:r+H,c:c+W]
-  
+
   return g
 
 def PSNR(original, compressed):
@@ -260,6 +286,24 @@ def PSNR(original, compressed):
 # define normalized 2D gaussian
 def gaus2d(x=0, y=0, mx=0, my=0, sx=0.01, sy=0.01):
   return 1. / (2. * np.pi * sx * sy) * np.exp(-((x - mx)**2. / (2. * sx**2.) + (y - my)**2. / (2. * sy**2.)))
+
+def gauss(s,sx,sy=None):
+    #s: shape
+    #sy, sx: sigma_y and sigma_x
+    
+    if sy is None:
+        sy=sx
+    mx=0
+    my=0
+    
+    xx = np.linspace(-1, 1, s[1])
+    yy = np.linspace(-1, 1, s[0])*s[0]/s[1]
+    xx, yy = np.meshgrid(xx, yy)   
+    
+    wind = 1. / (2. * np.pi * sx * sy) * np.exp(-((xx - mx)**2. / (2. * sx**2.) + (yy - my)**2. / (2. * sy**2.)))
+    wind = (wind-np.min(wind))/(np.max(wind)-np.min(wind))
+    
+    return wind
 
 def psf2otf(psf, otf_size):
     # calculate otf from psf with size >= psf size
@@ -354,7 +398,9 @@ def blind_decon2D_red_fp_L1(R0,X,OTF,Niter,lamb,lambdaPSF,f,radius,R_true,q,sa):
   for ii in range(Niter):
     # denoise R - L1
 
-    RD=f(R, radius)
+    RD = denoise_wavelet(R)
+    RD=f(RD, radius)
+    #RD=ndimage.median_filter(RD, size=3)
 
     b=fftHtX+lamb*(fft2(RD))
     A=fftHtH+lamb

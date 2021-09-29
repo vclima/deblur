@@ -1,12 +1,5 @@
 /output
-/step0
-/step5
-/step5_red
-/step5_test
-/step10
-/step7_red
-/step10_red
-/step7
-/step11
+/input
 /__pycache__
+/OTF
 out*.txt

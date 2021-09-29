@@ -16,8 +16,8 @@ def hist_norm(img):
     
 
 
-input_path="C:\Deblur_Challenge\output\step7"
-output_path="C:\Deblur_Challenge\output\step7_norm"
+input_path="C:\Deblur_Challenge\output\step9"
+output_path="C:\Deblur_Challenge\output\step9_norm"
 
 ip1=join(input_path,"RW")
 ip2=join(input_path,"RS")
